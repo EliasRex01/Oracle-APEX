@@ -33,7 +33,7 @@ prompt APPLICATION 208 - CONSUMOS DE EMPRESA DE SU SUCURSAL
 -- Application Export:
 --   Application:     208
 --   Name:            CONSUMOS DE EMPRESA DE SU SUCURSAL
---   Date and Time:   16:56 Tuesday January 14, 2025
+--   Date and Time:   07:14 Wednesday January 22, 2025
 --   Exported By:     ZARACHOJ
 --   Flashback:       0
 --   Export Type:     Application Export
