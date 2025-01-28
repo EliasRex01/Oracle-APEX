@@ -1,3 +1,109 @@
+-- news availables
+CREATE GLOBAL TEMPORARY TABLE soli_vend (
+    cod_vendedor     VARCHAR2(8) NOT NULL,
+    vendedor         VARCHAR2(40) NOT NULL,
+    cant_soli        NUMBER NOT NULL,
+    cant_soli_fact   NUMBER NOT NULL,
+    cant_soli_apro   NUMBER NOT NULL,
+    cant_soli_ana    NUMBER NOT NULL,
+    cant_soli_insi   NUMBER NOT NULL,
+    cant_soli_refe   NUMBER NOT NULL,
+    cant_soli_revi   NUMBER NOT NULL,
+    cant_soli_veri   NUMBER NOT NULL,
+    cant_soli_proc   NUMBER NOT NULL,
+    cant_soli_digi   NUMBER NOT NULL,
+    cant_soli_canc   NUMBER NOT NULL,
+    cant_soli_rech   NUMBER NOT NULL
+) ON COMMIT PRESERVE ROWS;
+
+----------------------------------------------
+CREATE OR REPLACE PROCEDURE pr_solicitudes_del_imo(
+    p_cod_personal        IN VARCHAR2 DEFAULT ' ',
+    p_periodo             IN VARCHAR2 DEFAULT NULL,
+    p_agrupar             IN NUMBER,
+    p_detalle             IN NUMBER,
+    p_cod_sucursal        IN NUMBER,
+    p_cod_tipo_mercaderia IN VARCHAR2,
+    p_cod_articulo        IN VARCHAR2
+) IS
+    v_agrupa              NUMBER := p_agrupar;
+    v_detalle             NUMBER := p_detalle;
+    h_cod_sucursal        VARCHAR2(1000) := p_cod_sucursal;
+    v_cod_sucursal        NUMBER := 0;
+    v_where               VARCHAR2(4000);
+    v_periodo             DATE;
+    v_cod_personal        VARCHAR2(1000) := p_cod_personal;
+    v_cod_articulo        VARCHAR2(100) := p_cod_articulo;
+    v_cod_tipo_mercaderia VARCHAR2(100) := p_cod_tipo_mercaderia;
+    v_existe              NUMBER := 0;
+BEGIN
+    -- Convert p_periodo to DATE if not NULL
+    IF p_periodo IS NOT NULL THEN
+        v_periodo := TO_DATE(p_periodo, 'DD/MM/YYYY');
+    ELSE
+        v_periodo := NULL;
+    END IF;
+
+    -- Handle h_cod_sucursal
+    IF h_cod_sucursal = ' ' THEN
+        h_cod_sucursal := TO_CHAR(v_cod_sucursal);
+    ELSIF h_cod_sucursal != '*' THEN
+        v_cod_sucursal := TO_NUMBER(h_cod_sucursal);
+    END IF;
+
+    -- Main logic
+    IF v_agrupa = 0 OR v_detalle = 1 THEN
+        IF h_cod_sucursal = '*' THEN
+            v_where := 'a.cod_sucursal IN (SELECT cod_sucursal '
+                       || 'FROM imo_det_suc WHERE periodo = '
+                       || '''' || TO_CHAR(v_periodo, 'DD/MM/YYYY') || ''''
+                       || ' AND cod_personal = '
+                       || '''' || v_cod_personal || ''''
+                       || ')';
+        ELSE
+            v_where := 'a.cod_sucursal = ' || v_cod_sucursal;
+        END IF;
+
+        v_where := v_where
+            || ' AND a.nro_soli = b.nro_soli'
+            || ' AND a.fec_soli >= ''' || TO_CHAR(v_periodo, 'DD/MM/YYYY') || ''''
+            || ' AND b.cod_articulo = ''' || v_cod_articulo || ''''
+            || ' AND a.cod_vendedor = v.cod_vendedor'
+            || ' GROUP BY a.cod_vendedor, v.vendedor, a.estado_soli';
+
+        -- Execute dynamic SQL
+        FOR rec IN (EXECUTE IMMEDIATE 'SELECT a.cod_vendedor, v.vendedor, a.estado_soli, NVL(COUNT(a.nro_soli), 0) AS cantidad
+                                       FROM sc a, sc_articulo b, vendedores v
+                                       WHERE ' || v_where) LOOP
+            -- Process each row
+            IF rec.estado_soli = 'FACT' THEN
+                v_cant_soli_fact := rec.cantidad;
+            ELSIF rec.estado_soli = 'APRO' THEN
+                v_cant_soli_apro := rec.cantidad;
+            -- Add other conditions here
+            END IF;
+
+            -- Update or insert into temporary table
+            UPDATE soli_vend
+            SET cant_soli = cant_soli + rec.cantidad,
+                cant_soli_fact = cant_soli_fact + v_cant_soli_fact,
+                -- Adds more
+            WHERE cod_vendedor = rec.cod_vendedor;
+
+            IF SQL%ROWCOUNT = 0 THEN
+                INSERT INTO soli_vend (cod_vendedor, vendedor, cant_soli, cant_soli_fact, ...)
+                VALUES (rec.cod_vendedor, rec.vendedor, rec.cantidad, v_cant_soli_fact, ...);
+            END IF;
+        END LOOP;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Error in pr_solicitudes_del_imo: ' || SQLERRM);
+END;
+
+
+----------------------------------------------------------------------------------
+
 CREATE OR REPLACE PROCEDURE pr_solicitudes_del_imo(
   p_cod_personal          IN imo_det_suc.cod_personal%TYPE DEFAULT ' ',
   p_periodo               IN imo_det_suc.periodo%TYPE DEFAULT NULL,
